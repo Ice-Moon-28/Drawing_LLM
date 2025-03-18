@@ -1,0 +1,18 @@
+[project]
+name = "drawing-llm"
+version = "0.1.0"
+description = "The kaggle project of drawing llm"
+authors = [
+    {name = "Linghua Zhang",email = "lz101@rice.edu"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "openai (>=1.66.3,<2.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
