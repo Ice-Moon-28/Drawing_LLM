@@ -1,0 +1,1 @@
+<svg viewBox="0 0 256 256" width="256" height="256"><rect x="0" y="0" width="256" height="128" fill="url(#skyGradient)"/><rect x="0" y="128" width="256" height="128" fill="#0A3D62"/><defs><linearGradient id="skyGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#1E3C72"/><stop offset="100%" stop-color="#2A5298"/></linearGradient></defs></svg>
