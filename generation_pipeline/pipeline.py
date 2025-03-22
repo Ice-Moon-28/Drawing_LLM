@@ -1,5 +1,6 @@
+import csv
 from generation_pipeline.prompt import generate_descrption_prompt, generate_svg_prompt
-from generation_pipeline.util import enforce_constraints, extract_answers, prompt_with_deepseek, extract_svg, save_to_json, save_to_svg
+from generation_pipeline.util import default_svg, enforce_constraints, extract_answers, prompt_with_deepseek, extract_svg, read_from_json, read_svg_as_string, save_to_json, save_to_svg
 from tqdm import tqdm
 
 from openai import OpenAI
@@ -98,5 +99,31 @@ def deepseek_svg_pipeline(descrptions):
             continue
 
         save_to_svg(clear_response, filename=f"svg/{id}.svg")
-    
 
+def read_annotation_to_csv(filename, output_csv1='output.csv', output_csv2='output2.csv'):
+    descpriptions = read_from_json(filename=filename)
+
+    f = open(output_csv1, 'w', newline='', encoding='utf-8')
+
+    f2 = open(output_csv2, 'w', newline='', encoding='utf-8')
+    writer = csv.writer(f)
+    write2 = csv.writer(f2)
+    writer.writerow(['id', 'svg'])
+    write2.writerow(['id', 'description'])
+
+    id = 0
+
+    for item in descpriptions:
+        svg = item.get('svg')
+        try:
+            svg_string = read_svg_as_string(svg)
+        except Exception as e:
+            print(e)
+            svg_string = default_svg
+        for sentence in item.get('sentences', []):
+            writer.writerow([id, svg_string])
+        
+            write2.writerow([id, sentence])
+            id += 1
+
+    print(f"✅ 转换完成，生成 {output_csv1} {output_csv2}文件")

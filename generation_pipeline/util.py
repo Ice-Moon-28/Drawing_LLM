@@ -1,9 +1,11 @@
 
 from collections import defaultdict
+import csv
 import json
 import logging
 import os
 import re
+import pandas as pd
 import torch
 from lxml import etree
 import re2
@@ -14,8 +16,11 @@ from sklearn.metrics.pairwise import cosine_similarity
 from generation_pipeline.setting import Deepseek_Api_Key, OpenAI_Api_Key
 from openai import OpenAI, OpenAIError
 import kagglehub
+import cairosvg
 
 svg_constraints = kagglehub.package_import('metric/svg-constraints')
+
+default_svg = """<svg width="256" height="256" viewBox="0 0 256 256"><circle cx="50" cy="50" r="40" fill="red" /></svg>"""
 
 def prompt_with_deepseek(description):
     client = OpenAI(api_key=Deepseek_Api_Key, base_url="https://api.deepseek.com")
@@ -160,7 +165,8 @@ def save_clusters_to_json(clusters, filename="clusters.json"):
 
 def save_to_json(obj, filename="clusters.json"):
     # **确保目录存在**
-    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    if os.path.dirname(filename) != '':
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
 
     # **写入 JSON 文件**
     with open(filename, 'w', encoding='utf-8') as f:
@@ -169,16 +175,43 @@ def save_to_json(obj, filename="clusters.json"):
     print(f"✅ Clusters saved to {filename}")
 
 def save_to_svg(svg_string, filename="clusters.svg"):
-    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    if os.path.dirname(filename) != '':
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
 
     with open(filename, 'w', encoding='utf-8') as f:
         f.write(svg_string)
 
     print(f"✅ Clusters saved to {filename}")
 
+def read_svg_as_string(filename):
+    """
+    读取 SVG 文件内容为字符串
+    :param filename: SVG 文件路径
+    :return: SVG 文件的字符串内容
+    """
+    if not os.path.exists(filename):
+        raise FileNotFoundError(f"❌ 文件不存在: {filename}")
+
+    with open(filename, 'r', encoding='utf-8') as f:
+        svg_string = f.read()
+
+    return svg_string
+
 def read_from_json(filename="clusters.json"):
     with open(filename, 'r', encoding='utf-8') as f:
         return json.load(f) 
+    
+def transform_json_into_array(jsons, transform_func):
+    items = []
+    for json in jsons:
+        array = transform_func(json)
+
+        for item in array:
+            items.append(item)
+        
+    return items
+        
+
     
 def enforce_constraints(svg_string: str) -> str:
     """Enforces constraints on an SVG string, removing disallowed elements
@@ -287,3 +320,36 @@ def enforce_constraints(svg_string: str) -> str:
             'SVG could not be sanitized to meet constraints: %s', e
         )
         return None
+    
+
+
+def write_to_csv(data, filename="clusters.csv"):
+    with open(filename, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(['label', 'sentences'])
+        for item in data:
+            writer.writerow([item["label"], item["sentences"]])
+
+
+def transform_svg_to_png(input_svg, output_png):
+    try:
+        cairosvg.svg2png(url=input_svg, write_to=output_png)
+    except Exception as e:
+        print(f"Error converting SVG to PNG: {e}")
+
+
+def read_from_csv(filename="clusters.csv"):
+    try:
+        df = pd.read_csv(filename)
+        return df
+    except Exception as e:
+        print(f"Error reading CSV file: {e}")
+        return None
+    
+def preprocess_svg_csv(svg_csv):
+
+    pass
+
+def preprocess_description_csv(description_csv):
+
+    pass
