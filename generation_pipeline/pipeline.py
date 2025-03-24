@@ -1,28 +1,24 @@
 import csv
+import os
+
+import concurrent
 from generation_pipeline.prompt import generate_descrption_prompt, generate_svg_prompt
-from generation_pipeline.util import default_svg, enforce_constraints, extract_answers, prompt_with_deepseek, extract_svg, read_from_json, read_svg_as_string, save_to_json, save_to_svg
+from generation_pipeline.util import default_svg, enforce_constraints, extract_answers, prompt_with_deepseek, extract_svg, read_from_csv, read_from_json, read_svg_as_string, save_to_json, save_to_svg
 from tqdm import tqdm
 
 from openai import OpenAI
+from score.score import score
 
-
-def deepseek_descrption_pipeline(number=1000, batch_number=100, filename='descriptions.txt'):
-    batch = number // batch_number
-
-    for _ in tqdm(range(batch), desc="Generating descriptions"):
-        # description = generate_descrption_prompt(number=batch_number)
-        # import pdb; pdb.set_trace()
-
-
-        client = OpenAI(api_key='sk-8a652d9cc48342789bd2657f9be44c2e', base_url="https://api.deepseek.com")
-
-        response = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant"},
-                { 
-                    "role": "user", 
-                    "content": """
+def process_description_batch(batch_number):
+    """
+    单个任务：请求 deepseek-chat API 生成一批描述，并返回答案列表（不在此处做去重）。
+    """
+    client = OpenAI(api_key='sk-8a652d9cc48342789bd2657f9be44c2e', base_url="https://api.deepseek.com")
+    response = client.chat.completions.create(
+        model="deepseek-chat",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant"},
+            {"role": "user", "content": """
                     You're a creative assistant tasked with generating textual descriptions similar to the following examples.
                     Examples:
                     - a starlit night over snow-covered peaks
@@ -41,64 +37,99 @@ def deepseek_descrption_pipeline(number=1000, batch_number=100, filename='descri
                     - purple pyramids spiraling around a bronze cone
                     - khaki triangles and azure crescents
 
-                    Please generate 20 new, unique, and similarly styled descriptions. Wrap each description with <answer></answer> tags:
-                    """,
-                } 
-            ],
-            stream=False
-        )
+                    Please generate {number} new, unique, and similarly styled descriptions. Wrap each description with <answer></answer> tags:
+                    """.format(number=batch_number)},
+        ],
+        stream=False
+    )
 
-        response = response.choices[0].message.content
+    response_text = response.choices[0].message.content
+    answers = extract_answers(response_text)
+    
+    # 此处不做去重，仅返回所有答案（去除前后空格）
+    new_answers = [answer.strip() for answer in answers if answer.strip()]
+    for ans in new_answers:
+        print(f"Generated description: {ans}")
+    return new_answers
 
-        # response = prompt_with_deepseek(description)
-        answers = extract_answers(response)
+def deepseek_descrption_pipeline(number=1000, batch_number=100, filename='descriptions.csv'):
+    """
+    多线程版生成描述，分多个 batch 请求 deepseek-chat 接口，然后将全局去重后的结果写入 CSV 文件。
+    """
+    total_batches = number // batch_number
+    all_results = []  # 用于存放所有生成的描述
 
-        with open(filename, 'a+', encoding='utf-8') as file:
-            for answer in answers:
-                file.write(answer.strip() + '\n')
+    # 使用 ThreadPoolExecutor 并行请求
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = [executor.submit(process_description_batch, batch_number) for _ in range(total_batches)]
+        for future in tqdm(concurrent.futures.as_completed(futures), total=total_batches, desc="Generating descriptions"):
+            batch_results = future.result()
+            all_results.extend(batch_results)
 
+    # 全局去重：只保留唯一的描述
+    unique_results = []
+    seen = set()
+    for description in all_results:
+        d = description.strip()
+        if d and d not in seen:
+            seen.add(d)
+            unique_results.append(d)
 
+    # 将唯一描述写入 CSV，依次编号
+    with open(filename, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(['id', 'description'])
+        for idx, description in enumerate(unique_results, start=1):
+            writer.writerow([idx, description])
 
-def deepseek_svg_pipeline(descrptions):
+    print(f"✅ 转换完成，生成 {filename} 文件")
 
-    for obj_item in tqdm(descrptions, desc="Generating SVG Code"):
-        # description = generate_descrption_prompt(number=batch_number)
-        # import pdb; pdb.set_trace()
+def process_svg_item(obj_item):
+    """
+    单个任务：根据描述生成 SVG。返回 (id, svg) 的元组，若生成失败则返回 None。
+    """
+    item_id = obj_item["id"]
+    description = obj_item["description"]
+    client = OpenAI(api_key='sk-8a652d9cc48342789bd2657f9be44c2e', base_url="https://api.deepseek.com")
+    messages = generate_svg_prompt(description)
+    response = client.chat.completions.create(
+        model="deepseek-chat",
+        messages=messages,
+        stream=False
+    )
+    response_text = response.choices[0].message.content
+    svg_response = extract_svg(response_text)
+    if svg_response is None:
+        return None
+    clear_response = enforce_constraints(svg_response)
+    if clear_response is None:
+        return None
+    print("🤖 Clear Response: ", clear_response)
+    return (item_id, clear_response)
 
-        id = obj_item["label"]
+def deepseek_svg_pipeline(descrptions, filename='svg.csv'):
+    """
+    多线程版生成 SVG，根据传入的描述对象数组（包含 id 和 description 字段），调用 deepseek-chat 接口生成 SVG 代码，
+    最后将成功生成的结果写入 CSV 文件。
+    """
+    results = []
+    # 使用 ThreadPoolExecutor 并行处理每个描述
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        # 为每个描述提交任务
+        futures = {executor.submit(process_svg_item, item): item for item in descrptions}
+        for future in tqdm(concurrent.futures.as_completed(futures), total=len(descrptions), desc="Generating SVG Code"):
+            res = future.result()
+            if res is not None:
+                results.append(res)
 
-        description = obj_item["sentences"]
+    # 将生成的 SVG 写入 CSV 文件
+    with open(filename, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(['id', 'svg'])
+        for item_id, svg in results:
+            writer.writerow([item_id, svg])
 
-
-        client = OpenAI(api_key='sk-8a652d9cc48342789bd2657f9be44c2e', base_url="https://api.deepseek.com")
-
-        messages = generate_svg_prompt(description)
-
-        response = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=messages,
-            stream=False
-        )
-
-        response = response.choices[0].message.content
-
-        response = extract_svg(
-            response
-        )
-
-        if response is None:
-            continue
-
-        print("🤖 Response: ", response)
-
-        clear_response = enforce_constraints(response)
-
-        print("🤖 Clear Response: ", clear_response)
-
-        if clear_response is None:
-            continue
-
-        save_to_svg(clear_response, filename=f"svg/{id}.svg")
+    print(f"✅ 转换完成，生成 {filename} 文件")
 
 def read_annotation_to_csv(filename, output_csv1='output.csv', output_csv2='output2.csv'):
     descpriptions = read_from_json(filename=filename)
@@ -140,3 +171,44 @@ def process_csv():
     total_svg_res, total_res, mean_res = score(description, svg, 'id')
 
     print(total_svg_res, total_res, mean_res)
+
+def main_pipeline(
+    svg_csv='svg.csv',
+    description_csv='description.csv',
+    score_csv='score.csv',
+    number=1000,
+    batch_number=10,
+):
+    # 检查 description_csv 文件是否存在，若不存在则执行生成
+    if not os.path.exists(description_csv):
+        deepseek_descrption_pipeline(number=number, batch_number=batch_number, filename=description_csv)
+    else:
+        print(f"{description_csv} 已存在，跳过生成。")
+
+    # 读取 description_csv 文件
+    description_data = read_from_csv(filename=description_csv)
+    descriptions = description_data.to_dict(orient='records')
+
+    # 检查 svg_csv 文件是否存在，若不存在则执行生成
+    if not os.path.exists(svg_csv):
+        deepseek_svg_pipeline(descrptions=descriptions, filename=svg_csv)
+    else:
+        print(f"{svg_csv} 已存在，跳过生成。")
+
+    # 如果需要对 score_csv 文件做类似检查，可在此添加相应逻辑
+    if not os.path.exists(score_csv):
+        svg_csv = read_from_csv(filename=svg_csv)
+
+        description_csv = read_from_csv(filename=description_csv)
+
+        svg_csv['svg'] = svg_csv['svg'].astype(str)
+        description_csv['description'] = description_csv['description'].astype(str)
+        
+        score(description_csv, svg_csv, 'id', True, score_csv)
+        pass
+    else:
+        print(f"{score_csv} 已存在，跳过生成。")
+
+    
+
+    

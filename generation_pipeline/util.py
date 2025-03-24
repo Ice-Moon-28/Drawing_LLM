@@ -16,7 +16,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 from generation_pipeline.setting import Deepseek_Api_Key, OpenAI_Api_Key
 from openai import OpenAI, OpenAIError
 import kagglehub
-import cairosvg
 
 svg_constraints = kagglehub.package_import('metric/svg-constraints')
 
@@ -332,6 +331,8 @@ def write_to_csv(data, filename="clusters.csv"):
 
 
 def transform_svg_to_png(input_svg, output_png):
+    import cairosvg
+
     try:
         cairosvg.svg2png(url=input_svg, write_to=output_png)
     except Exception as e:

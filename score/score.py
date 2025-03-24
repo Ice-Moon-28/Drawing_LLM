@@ -1,6 +1,9 @@
+import csv
 import io
 from math import prod
 from statistics import mean
+
+from tqdm import tqdm
 
 import cairosvg
 import clip
@@ -23,7 +26,7 @@ class ParticipantVisibleError(Exception):
 
 
 def score(
-    solution: pd.DataFrame, submission: pd.DataFrame, row_id_column_name: str
+    solution: pd.DataFrame, submission: pd.DataFrame, row_id_column_name: str, write_to_csv: bool, csv_filename: str
 ) -> float:
     """Calculates a fidelity score by comparing generated SVG images to target text descriptions.
 
@@ -71,11 +74,9 @@ def score(
     constraints = svg_constraints.SVGConstraints()
     try:
         for svg in submission.loc[:, 'svg']:
-            id += 1
             
             constraints.validate_svg(svg)
     except:
-        import pdb; pdb.set_trace()
         raise ParticipantVisibleError('SVG code violates constraints.')
 
     # Score
@@ -84,14 +85,29 @@ def score(
 
     results = []
     svg_res = []
+
+    if write_to_csv:
+        f = open(csv_filename, 'w', newline='', encoding='utf-8')
+    
+        writer = csv.writer(f)
+        writer.writerow(['id', 'svg', 'description', 'score'])
+
+
     try:
-        for svg, description in zip(
-            submission.loc[:, 'svg'], solution.loc[:, 'description'], strict=True
+        for svg, description in tqdm(
+            zip(submission['svg'], solution['description']),
+            total=len(submission),
+            desc="Scoring",
+            unit="item"
         ):
             image = svg_to_png(svg)
             vqa_score = vqa_evaluator.score(image, 'SVG illustration of ' + description)
             aesthetic_score = aesthetic_evaluator.score(image)
             instance_score = harmonic_mean(vqa_score, aesthetic_score, beta=2.0)
+
+            # 输出本次评分结果
+            print(f"Description: {description}, Score: {instance_score:.4f}, SVG: {svg}")
+
             results.append(instance_score)
             svg_res.append({
                 "svg": svg,
@@ -99,23 +115,27 @@ def score(
                 "score": instance_score,
             })
 
+            if write_to_csv:
+                writer.writerow([id, svg, description, instance_score])
+                id += 1
+
     except:
         raise ParticipantVisibleError('SVG failed to score.')
 
     fidelity = mean(results)
-    return svg_results, results, float(fidelity)
+    return svg_res, results, float(fidelity)
 
 
 class VQAEvaluator:
     """Evaluates images based on their similarity to a given text description."""
 
     def __init__(self):
-        self.quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_compute_dtype=torch.float16,
-        )
+        # self.quantization_config = BitsAndBytesConfig(
+        #     load_in_4bit=True,
+        #     bnb_4bit_quant_type="nf4",
+        #     bnb_4bit_use_double_quant=True,
+        #     bnb_4bit_compute_dtype=torch.float16,
+        # )
         self.model_path = kagglehub.model_download(
             'google/paligemma-2/transformers/paligemma2-10b-mix-448'
         )
@@ -123,7 +143,9 @@ class VQAEvaluator:
         self.model = PaliGemmaForConditionalGeneration.from_pretrained(
             self.model_path,
             low_cpu_mem_usage=True,
-            quantization_config=self.quantization_config,
+            torch_dtype=torch.float16,
+            device_map='mps',
+            # quantization_config=self.quantization_config,
         )
         self.questions = {
             'fidelity': 'Does <image> portray "{}" without any lettering? Answer yes or no.',
@@ -165,7 +187,7 @@ class VQAEvaluator:
 
     def get_yes_probability(self, image, prompt) -> float:
         inputs = self.processor(images=image, text=prompt, return_tensors='pt').to(
-            'cuda:0'
+            'mps'
         )
 
         with torch.no_grad():
@@ -214,27 +236,28 @@ class AestheticPredictor(nn.Module):
 
 class AestheticEvaluator:
     def __init__(self):
-        self.model_path = '/kaggle/input/sac-logos-ava1-l14-linearmse/sac+logos+ava1-l14-linearMSE.pth'
-        self.clip_model_path = '/kaggle/input/openai-clip-vit-large-patch14/ViT-L-14.pt'
+        # 使用 kagglehub 下载模型文件，返回文件的本地路径
+        self.model_path = 'sac+logos+ava1-l14-linearMSE.pth'
+        self.clip_model_path = 'ViT-L/14'
         self.predictor, self.clip_model, self.preprocessor = self.load()
 
     def load(self):
-        """Loads the aesthetic predictor model and CLIP model."""
-        state_dict = torch.load(self.model_path, weights_only=True, map_location='cuda:1')
-
-        # CLIP embedding dim is 768 for CLIP ViT L 14
-        predictor = AestheticPredictor(768)
+        """加载美学预测器模型和 CLIP 模型。"""
+        # 加载美学预测器权重
+        state_dict = torch.load(self.model_path, weights_only=True, map_location='mps')
+        predictor = AestheticPredictor(768)  # CLIP ViT L 14 的 embedding dim 为 768
         predictor.load_state_dict(state_dict)
-        predictor.to('cuda:1')
+        predictor.to('mps')
         predictor.eval()
-        clip_model, preprocessor = clip.load(self.clip_model_path, device='cuda:1')
 
+        # 加载 CLIP 模型和预处理器
+        clip_model, preprocessor = clip.load(self.clip_model_path, device='mps')
         return predictor, clip_model, preprocessor
 
 
     def score(self, image: Image.Image) -> float:
         """Predicts the CLIP aesthetic score of an image."""
-        image = self.preprocessor(image).unsqueeze(0).to('cuda:1')
+        image = self.preprocessor(image).unsqueeze(0).to('mps')
 
         with torch.no_grad():
             image_features = self.clip_model.encode_image(image)
@@ -242,7 +265,7 @@ class AestheticEvaluator:
             image_features /= image_features.norm(dim=-1, keepdim=True)
             image_features = image_features.cpu().detach().numpy()
 
-        score = self.predictor(torch.from_numpy(image_features).to('cuda:1').float())
+        score = self.predictor(torch.from_numpy(image_features).to('mps').float())
 
         return score.item() / 10.0  # scale to [0, 1]
 
@@ -290,3 +313,7 @@ def svg_to_png(svg_code: str, size: tuple = (384, 384)) -> Image.Image:
     # Convert SVG to PNG
     png_data = cairosvg.svg2png(bytestring=svg_code.encode('utf-8'))
     return Image.open(io.BytesIO(png_data)).convert('RGB').resize(size)
+
+
+if __name__ == "__main__":
+    AestheticEvaluator()
