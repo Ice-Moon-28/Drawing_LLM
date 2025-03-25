@@ -195,7 +195,6 @@ def main_pipeline(
     else:
         print(f"{svg_csv} 已存在，跳过生成。")
 
-    # 如果需要对 score_csv 文件做类似检查，可在此添加相应逻辑
     if not os.path.exists(score_csv):
         svg_csv = read_from_csv(filename=svg_csv)
 

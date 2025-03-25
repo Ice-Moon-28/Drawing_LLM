@@ -2,7 +2,8 @@ import csv
 import io
 from math import prod
 from statistics import mean
-
+import statistics
+from statistics import mean
 from tqdm import tqdm
 
 import cairosvg
@@ -17,6 +18,7 @@ from transformers import (
     BitsAndBytesConfig,
     PaliGemmaForConditionalGeneration,
 )
+from generation_pipeline.setting import device
 
 svg_constraints = kagglehub.package_import('metric/svg-constraints')
 
@@ -122,8 +124,22 @@ def score(
     except:
         raise ParticipantVisibleError('SVG failed to score.')
 
-    fidelity = mean(results)
-    return svg_res, results, float(fidelity)
+
+    # 假设 results 是你已有的得分列表
+    # 例如：
+    # results = [0.85, 0.90, 0.75, 0.80, 0.95]
+
+    max_value = max(results)
+    min_value = min(results)
+    avg_value = mean(results)
+    std_value = statistics.stdev(results)  # 计算样本标准差
+
+    print(f"Max Fidelity: {max_value:.4f}")
+    print(f"Min Fidelity: {min_value:.4f}")
+    print(f"Mean Fidelity: {avg_value:.4f}")
+    print(f"Std Fidelity: {std_value:.4f}")
+
+    return svg_res, results, float(avg_value)
 
 
 class VQAEvaluator:
@@ -144,7 +160,7 @@ class VQAEvaluator:
             self.model_path,
             low_cpu_mem_usage=True,
             torch_dtype=torch.float16,
-            device_map='mps',
+            device_map=device,
             # quantization_config=self.quantization_config,
         )
         self.questions = {
@@ -187,7 +203,7 @@ class VQAEvaluator:
 
     def get_yes_probability(self, image, prompt) -> float:
         inputs = self.processor(images=image, text=prompt, return_tensors='pt').to(
-            'mps'
+            device
         )
 
         with torch.no_grad():
@@ -244,20 +260,20 @@ class AestheticEvaluator:
     def load(self):
         """加载美学预测器模型和 CLIP 模型。"""
         # 加载美学预测器权重
-        state_dict = torch.load(self.model_path, weights_only=True, map_location='mps')
+        state_dict = torch.load(self.model_path, weights_only=True, map_location=device)
         predictor = AestheticPredictor(768)  # CLIP ViT L 14 的 embedding dim 为 768
         predictor.load_state_dict(state_dict)
-        predictor.to('mps')
+        predictor.to(device)
         predictor.eval()
 
         # 加载 CLIP 模型和预处理器
-        clip_model, preprocessor = clip.load(self.clip_model_path, device='mps')
+        clip_model, preprocessor = clip.load(self.clip_model_path, device=device)
         return predictor, clip_model, preprocessor
 
 
     def score(self, image: Image.Image) -> float:
         """Predicts the CLIP aesthetic score of an image."""
-        image = self.preprocessor(image).unsqueeze(0).to('mps')
+        image = self.preprocessor(image).unsqueeze(0).to(device)
 
         with torch.no_grad():
             image_features = self.clip_model.encode_image(image)
@@ -265,7 +281,7 @@ class AestheticEvaluator:
             image_features /= image_features.norm(dim=-1, keepdim=True)
             image_features = image_features.cpu().detach().numpy()
 
-        score = self.predictor(torch.from_numpy(image_features).to('mps').float())
+        score = self.predictor(torch.from_numpy(image_features).to(device).float())
 
         return score.item() / 10.0  # scale to [0, 1]
 
