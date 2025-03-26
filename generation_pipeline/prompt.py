@@ -42,11 +42,11 @@ svg_prompt_template_user = """Generate complete, well-formed SVG code that visua
 
 <example>
 <description>"A red circle with a blue square inside"</description>
-```svg
 <svg viewBox="0 0 256 256" width="256" height="256">
   <circle cx="128" cy="128" r="60" fill="red"/>
   <rect x="98" y="98" width="60" height="60" fill="blue"/>
 </svg>
+</example>
 """
 # svg_prompt_template_user = """Generate SVG code to visually represent the following text description, while respecting the given constraints.
 # <constraints>

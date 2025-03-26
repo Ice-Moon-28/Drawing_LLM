@@ -28,7 +28,7 @@ class ParticipantVisibleError(Exception):
 
 
 def score(
-    solution: pd.DataFrame, submission: pd.DataFrame, row_id_column_name: str, write_to_csv: bool, csv_filename: str
+    solution: pd.DataFrame, submission: pd.DataFrame, row_id_column_name: str, write_to_csv: bool, csv_filename: str, sorted_csv_filename: str
 ) -> float:
     """Calculates a fidelity score by comparing generated SVG images to target text descriptions.
 
@@ -94,6 +94,12 @@ def score(
         writer = csv.writer(f)
         writer.writerow(['id', 'svg', 'description', 'score'])
 
+        f2 = open(sorted_csv_filename, 'w', newline='', encoding='utf-8')
+        writer2 = csv.writer(f2)
+        writer2.writerow(['id', 'svg', 'description', 'score'])
+
+        res = []
+
 
     try:
         for svg, description in tqdm(
@@ -121,6 +127,12 @@ def score(
                 writer.writerow([id, svg, description, instance_score])
                 id += 1
 
+                res.append({
+                    "svg": svg,
+                    "description": description,
+                    "score": instance_score,
+                })
+
     except:
         raise ParticipantVisibleError('SVG failed to score.')
 
@@ -133,6 +145,12 @@ def score(
     min_value = min(results)
     avg_value = mean(results)
     std_value = statistics.stdev(results)  # 计算样本标准差
+
+    res = sorted(res, key=lambda x: x['score'], reverse=True)
+
+    if write_to_csv:
+        for item in res:
+            writer2.writerow([item['svg'], item['description'], item['score']])
 
     print(f"Max Fidelity: {max_value:.4f}")
     print(f"Min Fidelity: {min_value:.4f}")

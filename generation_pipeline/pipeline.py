@@ -3,7 +3,7 @@ import os
 
 import concurrent
 from generation_pipeline.prompt import generate_descrption_prompt, generate_svg_prompt
-from generation_pipeline.util import default_svg, enforce_constraints, extract_answers, prompt_with_deepseek, extract_svg, read_from_csv, read_from_json, read_svg_as_string, save_to_json, save_to_svg
+from generation_pipeline.util import default_svg, enforce_constraints, extract_answers, prompt_with_deepseek, extract_svg, read_from_csv, read_from_json, read_svg_as_string, save_to_json, save_to_svg, sort_csv_by_id
 from tqdm import tqdm
 
 from openai import OpenAI
@@ -15,33 +15,51 @@ def process_description_batch(batch_number):
     """
     client = OpenAI(api_key='sk-8a652d9cc48342789bd2657f9be44c2e', base_url="https://api.deepseek.com")
     response = client.chat.completions.create(
-        model="deepseek-chat",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant"},
-            {"role": "user", "content": """
-                    You're a creative assistant tasked with generating textual descriptions similar to the following examples.
-                    Examples:
-                    - a starlit night over snow-covered peaks
-                    - black and white checkered pants
-                    - crimson rectangles forming a chaotic grid
-                    - burgundy corduroy pants with patch pockets and silver buttons
-                    - orange corduroy overalls
-                    - a lighthouse overlooking the ocean
-                    - a green lagoon under a cloudy sky
-                    - a snowy plain
-                    - a maroon dodecahedron interwoven with teal threads
-                    - a purple silk scarf with tassel trim
-                    - magenta trapezoids layered on a translucent silver sheet
-                    - gray wool coat with a faux fur collar
-                    - a purple forest at dusk
-                    - purple pyramids spiraling around a bronze cone
-                    - khaki triangles and azure crescents
+    model="deepseek-chat",
+    # model='deepseek-reasoner',
+    messages=[
+        {
+            "role": "system", 
+            "content": "You are a helpful assistant"
+        },
+        {
+            "role": "user", 
+            "content": f"""
+        You are a creative assistant generating compact, imaginative, and visually distinctive textual prompts suitable for SVG rendering.
 
-                    Please generate {number} new, unique, and similarly styled descriptions. Wrap each description with <answer></answer> tags:
-                    """.format(number=batch_number)},
-        ],
-        stream=False
-    )
+        Instructions:
+        - Generate {batch_number} short, unique, non-repeating visual descriptions.
+        - Focus on clearly defined, **SVG-friendly visual elements**, such as: colors, basic shapes (circles, squares, triangles, polygons), textures (striped, dotted, woven), and layouts (grid, spiral, scattered).
+        - Use vivid adjectives (e.g. "teal", "burnt orange", "silver") and include **2–3 elements per prompt**.
+        - Avoid figurative language, emotional metaphors, or complex scenery.
+        - Use consistent style like the following examples:
+
+        Examples:
+        - a starlit night over snow-covered peaks
+        - black and white checkered pants
+        - crimson rectangles forming a chaotic grid
+        - burgundy corduroy pants with patch pockets and silver buttons
+        - orange corduroy overalls
+        - a lighthouse overlooking the ocean
+        - a green lagoon under a cloudy sky
+        - a snowy plain
+        - a maroon dodecahedron interwoven with teal threads
+        - a purple silk scarf with tassel trim
+        - magenta trapezoids layered on a translucent silver sheet
+        - gray wool coat with a faux fur collar
+        - a purple forest at dusk
+        - purple pyramids spiraling around a bronze cone
+        - khaki triangles and azure crescents
+
+        Format:  
+        Wrap each result with <answer> ... </answer> tags, one per line.
+
+        Begin now:
+        """
+                },
+            ],
+            stream=False
+        )
 
     response_text = response.choices[0].message.content
     answers = extract_answers(response_text)
@@ -107,29 +125,49 @@ def process_svg_item(obj_item):
     print("🤖 Clear Response: ", clear_response)
     return (item_id, clear_response)
 
-def deepseek_svg_pipeline(descrptions, filename='svg.csv'):
+def deepseek_svg_pipeline(descriptions, filename='svg.csv', error_log='svg_failures.log'):
     """
-    多线程版生成 SVG，根据传入的描述对象数组（包含 id 和 description 字段），调用 deepseek-chat 接口生成 SVG 代码，
-    最后将成功生成的结果写入 CSV 文件。
+    多线程版生成 SVG，每获得一个结果就立即写入 CSV，并动态展示成功与失败计数。
     """
-    results = []
-    # 使用 ThreadPoolExecutor 并行处理每个描述
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        # 为每个描述提交任务
-        futures = {executor.submit(process_svg_item, item): item for item in descrptions}
-        for future in tqdm(concurrent.futures.as_completed(futures), total=len(descrptions), desc="Generating SVG Code"):
-            res = future.result()
-            if res is not None:
-                results.append(res)
+    success_count = 0
+    failure_count = 0
 
-    # 将生成的 SVG 写入 CSV 文件
-    with open(filename, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
+    with open(filename, 'w', newline='', encoding='utf-8') as f_csv, open(error_log, 'w', encoding='utf-8') as f_log:
+        writer = csv.writer(f_csv)
         writer.writerow(['id', 'svg'])
-        for item_id, svg in results:
-            writer.writerow([item_id, svg])
 
-    print(f"✅ 转换完成，生成 {filename} 文件")
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = {executor.submit(process_svg_item, item): item for item in descriptions}
+
+            pbar = tqdm(total=len(descriptions), desc="🔧 Generating SVGs", ncols=100)
+
+            for future in concurrent.futures.as_completed(futures):
+                item = futures[future]
+                try:
+                    result = future.result()
+                    if result is not None:
+                        item_id, svg = result
+                        writer.writerow([item_id, svg])
+                        success_count += 1
+                    else:
+                        failure_count += 1
+                        f_log.write(f"{item['id']}\t{item['description']}\n")
+                except Exception as e:
+                    failure_count += 1
+                    f_log.write(f"{item['id']}\t{item['description']}\tERROR: {e}\n")
+                finally:
+                    pbar.set_postfix(success=success_count, failed=failure_count)
+                    pbar.update(1)
+
+            pbar.close()
+
+    print(f"\n✅ 完成！成功 {success_count} 条，失败 {failure_count} 条，结果保存至 {filename}")
+    if failure_count > 0:
+        print(f"⚠️ 失败记录保存至 {error_log}")
+
+    sort_csv_by_id(filename=filename, key='id')
+
+    
 
 def read_annotation_to_csv(filename, output_csv1='output.csv', output_csv2='output2.csv'):
     descpriptions = read_from_json(filename=filename)
@@ -191,9 +229,10 @@ def main_pipeline(
 
     # 检查 svg_csv 文件是否存在，若不存在则执行生成
     if not os.path.exists(svg_csv):
-        deepseek_svg_pipeline(descrptions=descriptions, filename=svg_csv)
+        deepseek_svg_pipeline(descriptions=descriptions, filename=svg_csv)
     else:
         print(f"{svg_csv} 已存在，跳过生成。")
+
 
     if not os.path.exists(score_csv):
         svg_csv = read_from_csv(filename=svg_csv)
@@ -203,7 +242,7 @@ def main_pipeline(
         svg_csv['svg'] = svg_csv['svg'].astype(str)
         description_csv['description'] = description_csv['description'].astype(str)
         
-        score(description_csv, svg_csv, 'id', True, score_csv)
+        score(description_csv, svg_csv, 'id', True, score_csv, 'sorted_' + score_csv)
         pass
     else:
         print(f"{score_csv} 已存在，跳过生成。")

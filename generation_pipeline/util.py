@@ -354,3 +354,8 @@ def preprocess_svg_csv(svg_csv):
 def preprocess_description_csv(description_csv):
 
     pass
+
+def sort_csv_by_id(filename, key):
+    df = pd.read_csv(filename)
+    df_sorted = df.sort_values(by=key)  # 按照 id 升序排列
+    df_sorted.to_csv(filename, index=False, encoding='utf-8')
