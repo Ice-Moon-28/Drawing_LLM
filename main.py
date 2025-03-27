@@ -11,5 +11,6 @@ if __name__ == "__main__":
         batch_number=20,
         svg_csv='svg2000.csv',
         description_csv='description2000.csv',
-        score_csv='score2000.csv'
+        score_csv='score2000.csv',
+        start_from_checkoutpoint=True
     )

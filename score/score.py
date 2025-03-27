@@ -28,7 +28,7 @@ class ParticipantVisibleError(Exception):
 
 
 def score(
-    solution: pd.DataFrame, submission: pd.DataFrame, row_id_column_name: str, write_to_csv: bool, csv_filename: str, sorted_csv_filename: str
+    solution: pd.DataFrame, submission: pd.DataFrame, row_id_column_name: str, write_to_csv: bool, csv_filename: str, sorted_csv_filename: str, start_from_checkoutpoint: bool
 ) -> float:
     """Calculates a fidelity score by comparing generated SVG images to target text descriptions.
 
@@ -68,7 +68,9 @@ def score(
     0...
     """
     # Validate
-    id = 0
+    id = 1302
+
+
     del solution[row_id_column_name], submission[row_id_column_name]
     if not pd.api.types.is_string_dtype(submission.loc[:, 'svg']):
         raise ParticipantVisibleError('svg must be a string.')
@@ -89,17 +91,21 @@ def score(
     svg_res = []
 
     if write_to_csv:
-        f = open(csv_filename, 'w', newline='', encoding='utf-8')
+        f = open(csv_filename, 'a' if start_from_checkoutpoint else 'w', newline='', encoding='utf-8')
     
         writer = csv.writer(f)
-        writer.writerow(['id', 'svg', 'description', 'score'])
+        if not start_from_checkoutpoint:
+            writer.writerow(['id', 'svg', 'description', 'score'])
 
-        f2 = open(sorted_csv_filename, 'w', newline='', encoding='utf-8')
+        f2 = open(sorted_csv_filename, 'a' if start_from_checkoutpoint else 'w', newline='', encoding='utf-8')
         writer2 = csv.writer(f2)
-        writer2.writerow(['id', 'svg', 'description', 'score'])
+        if not start_from_checkoutpoint:
+            writer2.writerow(['id', 'svg', 'description', 'score'])
 
         res = []
 
+    if start_from_checkoutpoint:
+        submission = submission[id:]
 
     try:
         for svg, description in tqdm(

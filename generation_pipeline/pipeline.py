@@ -216,6 +216,7 @@ def main_pipeline(
     score_csv='score.csv',
     number=1000,
     batch_number=10,
+    start_from_checkoutpoint=False
 ):
     # 检查 description_csv 文件是否存在，若不存在则执行生成
     if not os.path.exists(description_csv):
@@ -234,7 +235,7 @@ def main_pipeline(
         print(f"{svg_csv} 已存在，跳过生成。")
 
 
-    if not os.path.exists(score_csv):
+    if not os.path.exists(score_csv) or start_from_checkoutpoint:
         svg_csv = read_from_csv(filename=svg_csv)
 
         description_csv = read_from_csv(filename=description_csv)
@@ -242,7 +243,7 @@ def main_pipeline(
         svg_csv['svg'] = svg_csv['svg'].astype(str)
         description_csv['description'] = description_csv['description'].astype(str)
         
-        score(description_csv, svg_csv, 'id', True, score_csv, 'sorted_' + score_csv)
+        score(description_csv, svg_csv, 'id', True, score_csv, 'sorted_' + score_csv, start_from_checkoutpoint)
         pass
     else:
         print(f"{score_csv} 已存在，跳过生成。")
