@@ -359,3 +359,20 @@ def sort_csv_by_id(filename, key):
     df = pd.read_csv(filename)
     df_sorted = df.sort_values(by=key)  # 按照 id 升序排列
     df_sorted.to_csv(filename, index=False, encoding='utf-8')
+
+
+def merge_and_sort_excels(file_list, key, output_file):
+    # 读取所有 Excel 文件并合并为一个 DataFrame
+    dfs = [pd.read_excel(file) for file in file_list]
+    combined_df = pd.concat(dfs, ignore_index=True)
+
+    # 按照 'score' 列排序，降序
+    combined_df = combined_df.sort_values(by=key, ascending=False)
+
+    # 重设 id（从 1 开始）
+    combined_df = combined_df.reset_index(drop=True)
+    combined_df['id'] = range(1, len(combined_df) + 1)
+
+    combined_df.to_excel(output_file, index=False)
+
+    return combined_df
