@@ -4,6 +4,7 @@ from generation_pipeline.pipeline import main_pipeline
 from generation_pipeline.util import sort_csv_by_id
 from openai import OpenAI
 from score.score import score
+from train_pipeline.train import train
 
 if __name__ == "__main__":
     # main_pipeline(
@@ -14,3 +15,5 @@ if __name__ == "__main__":
     #     score_csv='score2000.csv',
     #     start_from_checkoutpoint=True
     # )
+
+    train()
