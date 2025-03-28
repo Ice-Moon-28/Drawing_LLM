@@ -116,6 +116,7 @@ def process_svg_item(obj_item):
         stream=False
     )
     response_text = response.choices[0].message.content
+
     svg_response = extract_svg(response_text)
     if svg_response is None:
         return None

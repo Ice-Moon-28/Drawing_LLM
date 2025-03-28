@@ -6,14 +6,7 @@ from datasets import load_dataset
 import torch
 
 def train():
-    model_path = kagglehub.model_download('google/gemma-2/Transformers/gemma-2-9b-it/2')
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        device_map="auto",
-        torch_dtype=torch.bfloat16
-        # quantization_config=quantization_config,
-    )
+    
 
     dataset = load_dataset("icemoon28/drawing_llm")
     train_data = dataset["train"].train_test_split(test_size=0.1)
@@ -41,10 +34,24 @@ Please ensure that the generated SVG code is well-formed, valid, and strictly ad
 
 <description>"{description}"</description>
 ```svg
-{svg_code}
-""".format(description=example["description"], svg_code=example["svg"])
+""".format(description=example["description"])
 
-    # LoRA 配置（适配大模型）
+
+
+    def compute_metrics(eval_preds):
+        return None
+    
+    import pdb; pdb.set_trace()
+
+    model_path = kagglehub.model_download('google/gemma-2/Transformers/gemma-2-9b-it/2')
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_path,
+        device_map="auto",
+        torch_dtype=torch.bfloat16
+        # quantization_config=quantization_config,
+    )
+
     lora_config = LoraConfig(
         r=8,
         lora_alpha=16,
@@ -55,9 +62,6 @@ Please ensure that the generated SVG code is well-formed, valid, and strictly ad
     )
     
     model = get_peft_model(model, lora_config)
-
-    def compute_metrics(eval_preds):
-        return None
 
 
     # 训练参数

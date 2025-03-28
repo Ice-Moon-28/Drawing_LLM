@@ -41,7 +41,7 @@ svg_prompt_template_user = """Generate complete, well-formed SVG code that visua
 </notes>
 
 <example>
-<description>"A red circle with a blue square inside"</description>
+<description>{description}</description>
 <svg viewBox="0 0 256 256" width="256" height="256">
   <circle cx="128" cy="128" r="60" fill="red"/>
   <rect x="98" y="98" width="60" height="60" fill="blue"/>
