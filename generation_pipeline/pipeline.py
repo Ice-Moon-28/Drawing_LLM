@@ -2,7 +2,7 @@ import csv
 import os
 
 import concurrent
-from generation_pipeline.prompt import generate_descrption_prompt, generate_svg_prompt
+from generation_pipeline.prompt import generate_description_prompt, generate_svg_prompt
 from generation_pipeline.util import default_svg, enforce_constraints, extract_answers, prompt_with_deepseek, extract_svg, read_from_csv, read_from_json, read_svg_as_string, save_to_json, save_to_svg, sort_csv_by_id
 from tqdm import tqdm
 
@@ -16,50 +16,99 @@ def process_description_batch(batch_number):
     client = OpenAI(api_key='sk-8a652d9cc48342789bd2657f9be44c2e', base_url="https://api.deepseek.com")
     response = client.chat.completions.create(
     model="deepseek-chat",
-    # model='deepseek-reasoner',
-    messages=[
-        {
+    messages=[{
             "role": "system", 
-            "content": "You are a helpful assistant"
+            "content": "You are a helpful assistant."
         },
         {
-            "role": "user", 
+            "role": "user",
             "content": f"""
-        You are a creative assistant generating compact, imaginative, and visually distinctive textual prompts suitable for SVG rendering.
+You are a creative assistant generating vivid, imaginative, and visually grounded textual prompts.
 
-        Instructions:
-        - Generate {batch_number} short, unique, non-repeating visual descriptions.
-        - Focus on clearly defined, **SVG-friendly visual elements**, such as: colors, basic shapes (circles, squares, triangles, polygons), textures (striped, dotted, woven), and layouts (grid, spiral, scattered).
-        - Use vivid adjectives (e.g. "teal", "burnt orange", "silver") and include **2–3 elements per prompt**.
-        - Avoid figurative language, emotional metaphors, or complex scenery.
-        - Use consistent style like the following examples:
+Your task:
+- Generate {batch_number} short, unique, and non-repetitive descriptions.
+- Each description must describe **either**:
+  1. **A clearly defined object** (natural or artificial; e.g., lighthouse, monolith, metallic sphere, ancient ruin, crystal structure)  
+  **OR**  
+  2. **A natural or atmospheric setting** (e.g., desert, tundra, ocean, snowy plain, forest at dusk, cloudy sky)
 
-        Examples:
-        - a starlit night over snow-covered peaks
-        - black and white checkered pants
-        - crimson rectangles forming a chaotic grid
-        - burgundy corduroy pants with patch pockets and silver buttons
-        - orange corduroy overalls
-        - a lighthouse overlooking the ocean
-        - a green lagoon under a cloudy sky
-        - a snowy plain
-        - a maroon dodecahedron interwoven with teal threads
-        - a purple silk scarf with tassel trim
-        - magenta trapezoids layered on a translucent silver sheet
-        - gray wool coat with a faux fur collar
-        - a purple forest at dusk
-        - purple pyramids spiraling around a bronze cone
-        - khaki triangles and azure crescents
+Guidelines:
+- Avoid abstract-only descriptions or purely geometric compositions.
+- Do **not** generate clothing, patterns, textures, or fashion-related items.
+- Do **not** use metaphor, emotion, or symbolic language.
+- Keep the language visual, specific, and literal.
+- Aim for a sense of spatial placement — the object should exist **within** the environment.
 
-        Format:  
-        Wrap each result with <answer> ... </answer> tags, one per line.
+Examples (do follow this style):
+<answer>a starlit night over snow-covered peaks</answer>
+<answer>black and white checkered pants</answer>
+<answer>crimson rectangles forming a chaotic grid</answer>
+<answer>burgundy corduroy pants with patch pockets and silver buttons</answer>
+<answer>orange corduroy overalls</answer>
+<answer>a lighthouse overlooking the ocean</answer>
+<answer>a green lagoon under a cloudy sky</answer>
+<answer>a snowy plain</answer>
+<answer>a maroon dodecahedron interwoven with teal threads</answer>
+<answer>a purple silk scarf with tassel trim</answer>
+<answer>magenta trapezoids layered on a translucent silver sheet</answer>
+<answer>gray wool coat with a faux fur collar</answer>
+<answer>a purple forest at dusk</answer>
+<answer>purple pyramids spiraling around a bronze cone</answer>
+<answer>khaki triangles and azure crescents</answer>
 
-        Begin now:
-        """
-                },
-            ],
-            stream=False
-        )
+Format:
+- Wrap each result in <answer> ... </answer> tags.
+- One description per line. No extra commentary.
+
+Begin now:
+"""
+        }
+    ],
+    stream=False
+)
+    # model='deepseek-reasoner',
+    # messages=[
+    #     {
+    #         "role": "system", 
+    #         "content": "You are a helpful assistant"
+    #     },
+    #     {
+    #         "role": "user", 
+    #         "content": f"""
+    #     You are a creative assistant generating compact, imaginative, and visually distinctive textual prompts suitable for SVG rendering.
+
+    #     Instructions:
+    #     - Generate {batch_number} short, unique, non-repeating visual descriptions.
+    #     - Focus on clearly defined, **SVG-friendly visual elements**, such as: colors, basic shapes (circles, squares, triangles, polygons), textures (striped, dotted, woven), and layouts (grid, spiral, scattered).
+    #     - Use vivid adjectives (e.g. "teal", "burnt orange", "silver") and include **2–3 elements per prompt**.
+    #     - Avoid figurative language, emotional metaphors, or complex scenery.
+    #     - Use consistent style like the following examples:
+
+    #     Examples:
+    #     - a starlit night over snow-covered peaks
+    #     - black and white checkered pants
+    #     - crimson rectangles forming a chaotic grid
+    #     - burgundy corduroy pants with patch pockets and silver buttons
+    #     - orange corduroy overalls
+    #     - a lighthouse overlooking the ocean
+    #     - a green lagoon under a cloudy sky
+    #     - a snowy plain
+    #     - a maroon dodecahedron interwoven with teal threads
+    #     - a purple silk scarf with tassel trim
+    #     - magenta trapezoids layered on a translucent silver sheet
+    #     - gray wool coat with a faux fur collar
+    #     - a purple forest at dusk
+    #     - purple pyramids spiraling around a bronze cone
+    #     - khaki triangles and azure crescents
+
+    #     Format:  
+    #     Wrap each result with <answer> ... </answer> tags, one per line.
+
+    #     Begin now:
+    #     """
+    #             },
+    #         ],
+            
 
     response_text = response.choices[0].message.content
     answers = extract_answers(response_text)
@@ -110,6 +159,7 @@ def process_svg_item(obj_item):
     description = obj_item["description"]
     client = OpenAI(api_key='sk-8a652d9cc48342789bd2657f9be44c2e', base_url="https://api.deepseek.com")
     messages = generate_svg_prompt(description)
+
     response = client.chat.completions.create(
         model="deepseek-chat",
         messages=messages,
@@ -120,6 +170,9 @@ def process_svg_item(obj_item):
     svg_response = extract_svg(response_text)
     if svg_response is None:
         return None
+    
+    print("🤖 Response: ", svg_response)
+    
     clear_response = enforce_constraints(svg_response)
     if clear_response is None:
         return None

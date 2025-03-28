@@ -26,27 +26,43 @@ svg_prompt_template_system = """You are a professional AI assistant skilled in g
 # Generate the SVG **code only**, without explanations.
 # """
 
-svg_prompt_template_user = """Generate complete, well-formed SVG code that visually and artistically represents the following text description. The SVG should have a clear, balanced composition and high aesthetic quality. Please follow these constraints exactly:
+svg_prompt_template_user = """You are to generate complete and well-formed SVG code that **artistically and accurately visualizes** the following description. Your output must strictly follow the format and constraints below.
 
-<constraints>
-* **Allowed Elements:** svg, path, circle, rect, ellipse, line, polyline, polygon, g, linearGradient, radialGradient, stop, defs
-* **Allowed Attributes:** viewBox, width, height, fill, stroke, stroke-width, d, cx, cy, r, x, y, rx, ry, x1, y1, x2, y2, points, transform, opacity
-</constraints>
+<description>"{description}"</description>
 
-<notes>
-* Do not include any text elements or any lettering in the SVG.
-* Focus solely on the visual representation of the description.
-* Ensure that the generated SVG is aesthetically pleasing, with balanced proportions, harmonious colors, and clear visual structure.
-* Provide the complete SVG code with no omissions or ellipses.
-</notes>
+<requirements>
+1. **Visual Quality**: The SVG should be aesthetically pleasing, with:
+   - Balanced composition
+   - Harmonious and thoughtful use of colors
+   - Clear, intentional structure
+
+2. **Allowed Elements** (only these are permitted):
+   svg, path, circle, rect, ellipse, line, polyline, polygon, g, linearGradient, radialGradient, stop, defs
+
+3. **Allowed Attributes** (only these are permitted):
+   viewBox, width, height, fill, stroke, stroke-width, d, cx, cy, r, x, y, rx, ry, x1, y1, x2, y2, points, transform, opacity
+
+4. **Do Not Use**:
+   - Any <text> or text-related elements
+   - Any external assets or images
+   - Any scripting or animation (e.g., no <script> or <animate>)
+
+5. **Output Format**:
+   - Provide a complete, standalone SVG code block
+   - No ellipses, comments, or placeholders
+   - Only return the SVG code (no additional explanation)
 
 <example>
-<description>{description}</description>
+<description>"A red circle with a blue square inside"</description>
 <svg viewBox="0 0 256 256" width="256" height="256">
   <circle cx="128" cy="128" r="60" fill="red"/>
   <rect x="98" y="98" width="60" height="60" fill="blue"/>
 </svg>
 </example>
+
+Please ensure that the generated SVG code is well-formed, valid, and strictly adheres to these constraints. Focus on a clear and concise representation of the input description within the given limitations. Always give the complete SVG code with nothing omitted. Never use an ellipsis.
+Your SVG should be a faithful and creative interpretation of the description above, using only the allowed elements and attributes.
+<description>"{description}"</description>
 """
 # svg_prompt_template_user = """Generate SVG code to visually represent the following text description, while respecting the given constraints.
 # <constraints>
@@ -86,32 +102,27 @@ if __name__ == "__main__":
 
 # description_prompt_system = """"""
 
-def generate_descrption_prompt(number):
-    
+def generate_description_prompt(number):
     return [
-        {"role": "system", "content": "You are a helpful assistant"},
-        { 
-            "role": "user", 
-            "content": """
-            You're a creative assistant tasked with generating textual descriptions similar to the following examples.
-            Examples:
-            - a starlit night over snow-covered peaks
-            - black and white checkered pants
-            - crimson rectangles forming a chaotic grid
-            - burgundy corduroy pants with patch pockets and silver buttons
-            - orange corduroy overalls
-            - a lighthouse overlooking the ocean
-            - a green lagoon under a cloudy sky
-            - a snowy plain
-            - a maroon dodecahedron interwoven with teal threads
-            - a purple silk scarf with tassel trim
-            - magenta trapezoids layered on a translucent silver sheet
-            - gray wool coat with a faux fur collar
-            - a purple forest at dusk
-            - purple pyramids spiraling around a bronze cone
-            - khaki triangles and azure crescents
+        {"role": "system", "content": "You are a helpful assistant."},
+        {
+            "role": "user",
+            "content": f"""
+You're a creative assistant tasked with generating short, vivid, and imaginative textual descriptions. Each description must depict a **scene where a distinct object is set within a specific landscape or atmospheric environment**.
 
-            Please generate {number} new, unique, and similarly styled descriptions. Wrap each description with <answer></answer> tags:
-            """.format(number=number),
-        } 
+The object can be abstract (like a geometric shape, sculpture, or material form), or natural (like a tree, rock, or artifact). The setting should be scenic, atmospheric, or natural (like forests, oceans, skies, deserts, etc).
+
+Examples:
+- a maroon dodecahedron interwoven with teal threads on a snowy plain  
+- a green lagoon under a cloudy sky  
+- purple pyramids spiraling around a bronze cone  
+- a lighthouse overlooking the ocean  
+- crimson rectangles forming a chaotic grid over misty hills  
+- an obsidian obelisk standing alone in a golden field at dusk  
+- magenta trapezoids layered on a translucent silver sheet in the moonlight  
+- a silver sphere suspended over a crimson desert  
+
+Please generate {number} new, unique, and similarly styled descriptions that combine a **visually distinctive object** with a **natural or atmospheric setting**. Wrap each description with <answer></answer> tags.
+"""
+        }
     ]
